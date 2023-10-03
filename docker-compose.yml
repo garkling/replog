@@ -1,0 +1,13 @@
+version: "3"
+
+
+services:
+  master:
+    container_name: master
+    hostname: master
+    build:
+      dockerfile: master/Dockerfile
+      context: .
+
+    ports:
+      - "10000:10000"

@@ -1,0 +1,16 @@
+[package]
+name = "Replicated-Log"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "master"
+path = "src/main.rs"
+
+[dependencies]
+actix-web = "4.3.1"
+serde = { version = "1.0.164", features = ["derive"] }
+tokio = "1.29.1"
+log = { version = "0.4.19",  features = ["max_level_debug"] }
+log4rs = { version = "1.2.0", features = ["default"] }
+
