@@ -1,4 +1,7 @@
 mod message;
+mod utils;
+
+use std::env;
 
 use log;
 use log4rs;
@@ -42,7 +45,8 @@ pub fn config(config: &mut web::ServiceConfig) {
 
 #[actix_web::main]
 async fn main() {
-    log4rs::init_file("log-config.yml", Default::default()).unwrap();
+
+    utils::init_logger();
 
     let m_log = MessageLog::new();
     log::debug!("Initialized MessageLog object");

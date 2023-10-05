@@ -6,8 +6,22 @@ services:
     container_name: master
     hostname: master
     build:
-      dockerfile: master/Dockerfile
-      context: .
+      dockerfile: Dockerfile
+      args:
+        APP_NAME: master
 
     ports:
-      - "10000:10000"
+      - "8080:10000"
+
+  secondary:
+    container_name: secondary1
+    hostname: secondary1
+    build:
+      dockerfile: Dockerfile
+      context: .
+      args:
+        APP_NAME: secondary
+
+    ports:
+      - "8081:10000"
+      - "50051:50051"

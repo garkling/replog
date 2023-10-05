@@ -37,3 +37,12 @@ impl MessageLog {
     }
 
 }
+
+impl From<&MessageLog> for MessageLog {
+
+    fn from(log: &MessageLog) -> Self {
+        Self {
+            messages: log.messages.clone()
+        }
+    }
+}
