@@ -1,0 +1,52 @@
+version: "3"
+
+
+services:
+  master:
+    restart: on-failure
+    container_name: master
+    hostname: master
+    build:
+      dockerfile: Dockerfile
+      context: .
+      args:
+        APP_NAME: master
+
+    environment:
+      - SECONDARY_HOSTS=secondary1,secondary2
+      - RPC_PORT=50051
+
+    ports:
+      - "127.0.0.1:8080:10000"
+
+  secondary01:
+    restart: on-failure
+    container_name: secondary1
+    hostname: secondary1
+    build:
+      dockerfile: Dockerfile
+      context: .
+      args:
+        APP_NAME: secondary
+
+    depends_on:
+      - master
+
+    ports:
+      - "127.0.0.1:8081:10000"
+
+  secondary02:
+    restart: on-failure
+    container_name: secondary2
+    hostname: secondary2
+    build:
+      dockerfile: Dockerfile
+      context: .
+      args:
+        APP_NAME: secondary
+
+    depends_on:
+      - master
+
+    ports:
+      - "127.0.0.1:8082:10000"
