@@ -24,10 +24,8 @@ impl MessageLog {
     pub async fn add(&self, msg: Message) {
         let mut messages = self.messages.lock().await;
 
-        let content = msg.content.clone();
-
-        messages.push(msg);
-        log::info!("Message `{}` appended", content)
+        messages.push(msg.clone());
+        log::info!("{:?} appended", msg)
     }
 
     pub async fn get_all(&self) -> Vec<Message> {

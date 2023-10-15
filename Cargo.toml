@@ -1,15 +1,15 @@
 [package]
-name = "Replicated-Log"
+name = "replog"
 version = "0.1.0"
 edition = "2021"
 
 [[bin]]
 name = "master"
-path = "src/master.rs"
+path = "src/master/main.rs"
 
 [[bin]]
 name = "secondary"
-path = "src/secondary.rs"
+path = "src/secondary/main.rs"
 
 
 [dependencies]

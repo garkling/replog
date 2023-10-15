@@ -8,7 +8,7 @@ appenders:
       pattern: "{h({d(%Y-%m-%d %H:%M:%S)} | {({l}):5.5} | {m}{n})}"
     filters:
       - kind: threshold
-        level: debug
+        level: info
 
 root:
   appenders:

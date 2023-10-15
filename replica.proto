@@ -2,14 +2,14 @@ syntax = "proto3";
 package replica;
 
 service Replicator {
-  rpc replicate(Replica) returns (Acknowledge);
+  rpc replicate(Replica) returns (Ack);
 }
 
 message Replica {
   string content = 1;
 }
 
-message Acknowledge {
+message Ack {
   bool status = 1;
 }
 
