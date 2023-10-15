@@ -5,7 +5,7 @@
 
 ## Build
 1. ``cd replog/``
-2. ``docker-compose up --build`` + ``-d`` for a detached mode
+2. ``docker-compose -f docker-compose.yml up --build`` + ``-d`` for a detached mode
 
 
 
