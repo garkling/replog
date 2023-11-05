@@ -3,6 +3,7 @@ use std::net::SocketAddr;
 use std::time::Duration;
 
 use tokio::time;
+use lazy_static::lazy_static;
 use tonic::{transport::Server, Request, Response, Status};
 
 use replicator::replicator_server::{Replicator, ReplicatorServer};
@@ -15,7 +16,13 @@ pub mod replicator {
 }
 
 
-const REPL_DELAY: u8 = 5;
+lazy_static! {
+    static ref REPL_DELAY: u8 = env::var("REPLICATION_DELAY")
+    .unwrap_or_default()
+    .parse::<u8>()
+    .unwrap_or(5);
+
+}
 
 
 #[tonic::async_trait]
@@ -26,6 +33,10 @@ impl Replicator for MessageLog {
         request: Request<Replica>
     ) -> Result<Response<Ack>, Status> {
 
+        time::sleep(
+            Duration::from_secs(*REPL_DELAY as u64)
+        ).await;
+
         let replica_msg: Replica = request.into_inner();
         log::info!("{:?} received", replica_msg);
 
@@ -34,10 +45,6 @@ impl Replicator for MessageLog {
         };
 
         self.add(message.clone()).await;
-
-        time::sleep(
-            Duration::from_secs(REPL_DELAY as u64)
-        ).await;
 
         log::info!("{:?} replicated", message);
 

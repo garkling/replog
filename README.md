@@ -17,7 +17,8 @@ ___
 #### ``POST /api/v1/messages`` - create a message
 ```
 {
-    "content": "#your-message"
+    "message": "#your-message"
+    "wc": 3    // write concern
 }
 ```
 
@@ -29,6 +30,7 @@ ___
 
 
 ## Done
+### `v1`
 - after each ``POST`` request, the message is replicated on every ``secondary`` server
 - ``master`` ensures that ``secondary`` have received a message via ``ACK``
 - ``master`` ``POST`` request are finished only after receiving ``ACK`` from all ``secondary`` (blocking replication approach)
@@ -36,3 +38,6 @@ ___
 - **RPC** and **REST** frameworks are used for ``master <-> secondary`` communication
 - the implementation supports logging 
 - ``master`` and ``secondary`` are encapsulated in **Docker**
+
+### `v2`
++ client ``POST`` request in addition to the message also may contain `WRITE CONCERN` parameter `wc: 1..n`

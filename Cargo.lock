@@ -1312,6 +1312,7 @@ name = "replog"
 version = "0.1.0"
 dependencies = [
  "actix-web",
+ "lazy_static",
  "log",
  "log4rs",
  "prost",
