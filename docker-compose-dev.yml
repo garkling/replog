@@ -31,6 +31,11 @@ services:
         APP_NAME: secondary
     image: replicated-log-secondary
 
+    environment:
+      REPLICATION_DELAY: 5
+      ORDER_DIFF_MULTIPLIER: 0.2
+      ORDER_CORRECTION_TIME_LIMIT_S: 60
+
     depends_on:
       - master
 
@@ -49,7 +54,9 @@ services:
     image: replicated-log-secondary
 
     environment:
-      REPLICATION_DELAY: "10"
+      REPLICATION_DELAY: 10
+      ORDER_DIFF_MULTIPLIER: 0.2
+      ORDER_CORRECTION_TIME_LIMIT_S: 60
 
     depends_on:
       - master

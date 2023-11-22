@@ -7,7 +7,11 @@
 1. ``cd replog/``
 2. ``docker-compose -f docker-compose.yml up --build`` + ``-d`` for a detached mode
 
-
+## Config
+There is a small configuration list (going to be more flexible in `v3`):
++ `REPLICATION_DELAY: 5` - simulates a 'heavy I/O' replication time on `secondary`, you can set different values to check `wc`  
++ `ORDER_DIFF_MULTIPLIER: 0.2` - a fraction from `ORDER_CORRECTION_TIME_LIMIT_S` for every awaiting message adding to the total timeout in case of disordering
++ `ORDER_CORRECTION_TIME_LIMIT_S: 60` - upper limit of waiting for the order correction in seconds in case of disordering
 
 ## Usage
 There is no UI/CLI available for the tool, but you can interact using REST API
@@ -17,8 +21,15 @@ ___
 #### ``POST /api/v1/messages`` - create a message
 ```
 {
-    "message": "#your-message"
-    "wc": 3    // write concern
+    "message": "#your-message",
+    "wc": 3,                // write concern
+
+    "__ordering": 1,        // optional testing field, for 
+                            // defining a custom message order 
+                            // to check the guarantee of the correct order
+
+    "__duplicate": false    // optional testing field, 
+                            // commands to simulate a message duplication
 }
 ```
 
@@ -41,3 +52,12 @@ ___
 
 ### `v2`
 + client ``POST`` request in addition to the message also may contain `WRITE CONCERN` parameter `wc: 1..n`
++ added a unique ID and an atomic ordering integer in the body of a replication message
++ added a replication state/message statuses structures for keeping the total ordering and message IDs 
++ added algorithms for message ordering correction and duplication checks
+
+### `#TODO`
++ `secondary` instance auto-joining to the cluster given `master` endpoint
++ heartbeats from `master` to `secondary` instances
++ auto-recover of replication server on `secondary` in case of failure
++ features of the `v3` iteration

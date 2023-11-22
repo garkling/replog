@@ -6,7 +6,7 @@ services:
     restart: on-failure
     container_name: master
     hostname: master
-    image: garkling/replicated-log-master:2.0.0
+    image: garkling/replicated-log-master:2.1.0
 
     environment:
       - SECONDARY_HOSTS=secondary1,secondary2
@@ -19,10 +19,12 @@ services:
     restart: on-failure
     container_name: secondary1
     hostname: secondary1
-    image: garkling/replicated-log-secondary:2.0.0
+    image: garkling/replicated-log-secondary:2.1.0
 
     environment:
       REPLICATION_DELAY: 5
+      ORDER_DIFF_MULTIPLIER: 0.2
+      ORDER_CORRECTION_TIME_LIMIT_S: 60
 
     depends_on:
       - master
@@ -34,10 +36,12 @@ services:
     restart: on-failure
     container_name: secondary2
     hostname: secondary2
-    image: garkling/replicated-log-secondary:2.0.0
+    image: garkling/replicated-log-secondary:2.1.0
 
     environment:
       REPLICATION_DELAY: 10
+      ORDER_DIFF_MULTIPLIER: 0.2
+      ORDER_CORRECTION_TIME_LIMIT_S: 60
 
     depends_on:
       - master
