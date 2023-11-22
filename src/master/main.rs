@@ -2,7 +2,7 @@ use std::env;
 use std::sync::Arc;
 
 use log;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use actix_web::{web::{Data, Json}, web, post, get, App, HttpResponse, HttpServer, HttpRequest};
 
 use replicator_client::ReplicatorMultiClient;
@@ -11,6 +11,15 @@ use replog::common;
 use common::message::{Message, MessageLog};
 
 mod replicator_client;
+
+#[derive(Debug, Deserialize)]
+struct RequestBody {
+    message: String,
+    wc: u8,  // write concern
+    __ordering: Option<u32>,
+    #[serde(default)]
+    __duplicate: bool,
+}
 
 
 #[derive(Serialize)]
@@ -23,18 +32,19 @@ struct ResponseBody {
 async fn write_message(
     log: Data<MessageLog>,
     replicator_client: Data<Arc<ReplicatorMultiClient>>,
-    new_msg: Json<Message>,
+    request: Json<RequestBody>,
     req: HttpRequest) -> HttpResponse {
 
     log::debug!("Called {} \"{}\" resource", req.method(), req.uri());
 
-    let message = new_msg.into_inner();
+    let request = request.into_inner();
+    let message = Message { content: request.message.clone() };
 
     log::info!("{:?} received", message);
 
     log.add(message.clone()).await;
 
-    replicator_client.replicate(message).await;
+    replicator_client.replicate(message, request).await;
 
     HttpResponse::Created().json(ResponseBody { status: true })
 
