@@ -15,7 +15,10 @@ mod replicator_client;
 #[derive(Debug, Deserialize)]
 struct RequestBody {
     message: String,
-    wc: u8  // write concern
+    wc: u8,  // write concern
+    __ordering: Option<u32>,
+    #[serde(default)]
+    __duplicate: bool,
 }
 
 
@@ -35,13 +38,13 @@ async fn write_message(
     log::debug!("Called {} \"{}\" resource", req.method(), req.uri());
 
     let request = request.into_inner();
-    let message = Message { content: request.message };
+    let message = Message { content: request.message.clone() };
 
     log::info!("{:?} received", message);
 
     log.add(message.clone()).await;
 
-    replicator_client.replicate(message, request.wc).await;
+    replicator_client.replicate(message, request).await;
 
     HttpResponse::Created().json(ResponseBody { status: true })
 

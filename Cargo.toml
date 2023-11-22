@@ -13,15 +13,15 @@ path = "src/secondary/main.rs"
 
 
 [dependencies]
-actix-web = "4.3.1"
-serde = { version = "1.0.164", features = ["derive"] }
-tokio = "1.29.1"
-log = { version = "0.4.19",  features = ["max_level_debug"] }
-log4rs = { version = "1.2.0", features = ["default"] }
 tonic = "0.9.2"
 prost = "0.11.9"
+actix-web = "4.3.1"
+tokio = "1.29.1"
 lazy_static = "1.4.0"
-
+serde = { version = "1.0.164", features = ["derive"] }
+log4rs = { version = "1.2.0", features = ["default"] }
+uuid = { version = "1.5.0", features = ["v4", "fast-rng"] }
+log = { version = "0.4.19", features = ["max_level_debug"] }
 
 [build-dependencies]
 tonic-build = "0.9.2"

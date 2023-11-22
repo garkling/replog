@@ -6,10 +6,11 @@ service Replicator {
 }
 
 message Replica {
-  string content = 1;
+  string id = 1;
+  uint32 order = 2;
+  string content = 3;
 }
 
 message Ack {
   bool status = 1;
 }
-
