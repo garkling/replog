@@ -13,6 +13,8 @@ There is a small configuration list (going to be more flexible in `v3`):
 + `ORDER_DIFF_MULTIPLIER: 0.2` - a fraction from `ORDER_CORRECTION_TIME_LIMIT_S` for every awaiting message adding to the total timeout in case of disordering
 + `ORDER_CORRECTION_TIME_LIMIT_S: 60` - upper limit of waiting for the order correction in seconds in case of disordering
 
+The configuration currently can be changed in `docker-compose.yml`'s `environment` section. The `config.env` will be used in the next releases. 
+
 ## Usage
 There is no UI/CLI available for the tool, but you can interact using REST API
 ___
