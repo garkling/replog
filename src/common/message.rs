@@ -1,20 +1,20 @@
 use std::sync::Arc;
 
 use log;
+use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
-use serde::{Serialize, Deserialize};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Message {
-    pub content: String
+    pub content: String,
 }
 
+#[derive(Debug)]
 pub struct MessageLog {
-    messages: Arc<Mutex<Vec<Message>>>
+    messages: Arc<Mutex<Vec<Message>>>,
 }
 
 impl MessageLog {
-
     pub fn new() -> Self {
         let messages = Arc::new(Mutex::new(vec![]));
 
@@ -33,14 +33,12 @@ impl MessageLog {
 
         messages.clone()
     }
-
 }
 
 impl From<&MessageLog> for MessageLog {
-
     fn from(log: &MessageLog) -> Self {
         Self {
-            messages: log.messages.clone()
+            messages: log.messages.clone(),
         }
     }
 }

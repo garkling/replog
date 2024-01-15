@@ -1,0 +1,10 @@
+syntax = "proto3";
+package syncreq;
+
+service SyncRequest {
+    rpc sync(SyncClaim) returns (EmptyAck);
+}
+
+message SyncClaim {}
+
+message EmptyAck {}

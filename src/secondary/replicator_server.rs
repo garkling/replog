@@ -1,75 +1,112 @@
-use std::cmp::max;
 use std::env;
-use std::net::SocketAddr;
 use std::time::Duration;
+use std::cmp::{max, min};
+use std::net::SocketAddr;
 use std::collections::HashSet;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicI8, AtomicU32, Ordering};
 
-use tokio::time;
-use tokio::sync::RwLock;
 use lazy_static::lazy_static;
-use tonic::{transport::Server, Request, Response, Status};
+use tokio::sync::RwLock;
+use tokio::time::{interval, sleep, timeout};
+use tonic_health::pb::health_server::HealthServer;
+use tonic::{transport::Server, Request, Response, Status, async_trait};
 
+use replicator::{Ack, Replica};
 use replicator::replicator_server::{Replicator, ReplicatorServer};
-use replicator::{Replica, Ack};
+
+use sync_request::{EmptyAck, SyncClaim};
+use sync_request::sync_request_server::{SyncRequest, SyncRequestServer};
 
 use replog::common::message::{Message, MessageLog};
+use replog::{RPC_DEF_PORT, REQ_TIMEOUT_MS, RPC_SERVER_RECONNECT_DELAY_MS};
+use replog::common::heartbeats::HealthService;
+use crate::join_requester::try_join;
+use crate::SABOTAGE_MODE;
 
 pub mod replicator {
     tonic::include_proto!("replica");
 }
+pub mod sync_request {
+    tonic::include_proto!("syncreq");
+}
 
+type ReplReq = Request<Replica>;
+type ReplRes = Result<Response<Ack>, Status>;
+type SyncReq = Request<SyncClaim>;
+type SyncRes = Result<Response<EmptyAck>, Status>;
 
 lazy_static! {
-
     static ref ORDER_DIFF_MULTIPLIER: f32 = env::var("ORDER_DIFF_MULTIPLIER")
         .unwrap_or_default()
-        .parse::<f32>()
-        .unwrap();
-
-    static ref ORDER_CORRECTION_TIME_LIMIT: u8 = env::var("ORDER_CORRECTION_TIME_LIMIT_S")
+        .parse()
+        .unwrap_or(0.2);
+    static ref ORDER_CORRECTION_TIME_LIMIT_MS: u64 = env::var("ORDER_CORRECTION_TIME_LIMIT_MS")
         .unwrap_or_default()
-        .parse::<u8>()
-        .unwrap();
-
-    static ref REPL_DELAY: u8 = env::var("REPLICATION_DELAY")
-        .unwrap_or_default()
-        .parse::<u8>()
-        .unwrap_or(5);
+        .parse()
+        .unwrap_or(60000);
+    static ref REPL_DELAY_MS: Duration = Duration::from_millis(
+        env::var("REPLICATION_DELAY_MS")
+            .unwrap_or_default()
+            .parse()
+            .unwrap_or(5000)
+    );
 }
 
 
-#[derive(PartialEq)]
-enum MessageStatus {
+#[derive(PartialEq, Debug)]
+pub enum MessageStatus {
     Invalid,
     Belated,
     Correct,
-    Disordered
+    Disordered,
 }
 
-struct ReplicatedMessageLog {
+#[derive(Debug, Default)]
+pub struct SyncMode(AtomicBool);
+
+impl SyncMode {
+
+    pub fn enabled(&self) -> bool {
+        self.0.load(Ordering::Acquire)
+    }
+
+    pub fn toggle(&self, mode: bool) {
+        let _ = self.0.compare_exchange(
+            !mode,
+            mode,
+            Ordering::Release,
+            Ordering::Acquire,
+        );
+    }
+}
+
+
+pub struct ReplicatedMessageLog {
     pub state: ReplicationState,
-    pub log: MessageLog,
+    pub log: MessageLog
 }
 
-struct ReplicationState {
-    pub current_ordering: RwLock<u32>,
-    pub unique_identifiers: RwLock<HashSet<String>>,
-    pub messages_lost: RwLock<i8>
+#[derive(Debug, Clone)]
+pub struct ReplicationState {
+    pub current_ordering: Arc<AtomicU32>,
+    pub messages_lost: Arc<AtomicI8>,
+    pub unique_identifiers: Arc<RwLock<HashSet<String>>>,
+    pub sync_mode: Arc<SyncMode>
 }
-
 
 impl ReplicationState {
-
     pub fn new() -> Self {
         Self {
-            current_ordering: RwLock::new(0),
-            messages_lost: RwLock::new(0),
-            unique_identifiers: RwLock::new(HashSet::new())
+            current_ordering: Arc::new(AtomicU32::new(0)),
+            messages_lost: Arc::new(AtomicI8::new(0)),
+            unique_identifiers: Arc::new(RwLock::new(HashSet::new())),
+            sync_mode: Arc::new(SyncMode::default())
         }
     }
 
-    pub async fn get_ordering(&self) -> u32 {
-        *self.current_ordering.read().await
+    pub fn get_ordering(&self) -> u32 {
+        self.current_ordering.load(Ordering::Acquire)
     }
 
     pub async fn duplicates(&self, identifier: &String) -> bool {
@@ -77,12 +114,12 @@ impl ReplicationState {
         set.contains(identifier)
     }
 
-    pub async fn consecutive_ordering(&self, order: u32) -> bool {
-        order - 1 == self.get_ordering().await
+    pub fn consecutive_ordering(&self, order: u32) -> bool {
+        order - 1 == self.get_ordering()
     }
 
-    pub async fn has_lost_messages(&self) -> bool {
-        *self.messages_lost.read().await != 0
+    pub fn has_lost_messages(&self) -> bool {
+        self.messages_lost.load(Ordering::Acquire) != 0
     }
 
     pub async fn register_id(&self, identifier: String) {
@@ -90,23 +127,40 @@ impl ReplicationState {
         set.insert(identifier);
     }
 
-    pub async fn register_ordering(&self, ordering: u32) {
-        let mut go = self.current_ordering.write().await;
-        *go = ordering;
+    pub fn register_ordering(&self, ordering: u32) {
+        self.current_ordering.store(ordering, Ordering::Release);
     }
 
-    pub async fn modify_lost_message_count(&self, modifier: i8) {
-        let mut lost = self.messages_lost.write().await;
-        *lost = max(0, *lost + modifier)
+    pub fn modify_lost_message_count(&self, modifier: i8) {
+        let _ = self.messages_lost.fetch_update(
+            Ordering::Release,
+            Ordering::Acquire,
+            |n| Some(max(0, n + modifier))
+        );
     }
+}
 
+
+impl From<&ReplicatedMessageLog> for ReplicatedMessageLog {
+    fn from(rml: &Self) -> Self {
+        Self {
+            state: rml.state.clone(),
+            log: MessageLog::from(&rml.log)
+        }
+    }
 }
 
 
 impl ReplicatedMessageLog {
 
-    pub async fn validate(&self, msg: &Replica) -> MessageStatus {
+    pub fn new() -> Self {
+        Self {
+            log: MessageLog::new(),
+            state: ReplicationState::new()
+        }
+    }
 
+    pub async fn validate(&self, msg: &Replica) -> MessageStatus {
         if self.validate_uniqueness(&msg.id).await == MessageStatus::Correct {
             self.validate_ordering(msg.order).await
         } else {
@@ -124,71 +178,69 @@ impl ReplicatedMessageLog {
     }
 
     async fn validate_ordering(&self, msg_ordering: u32) -> MessageStatus {
-        let curr_order = self.state.get_ordering().await;
+        let curr_order = self.state.get_ordering();
         if msg_ordering <= curr_order {
-            if self.state.has_lost_messages().await {
-
+            if self.state.has_lost_messages() {
                 log::info!("The lost message with ordering ({msg_ordering}) found!");
-                self.state.modify_lost_message_count(-1).await;
+                self.state.modify_lost_message_count(-1);
                 MessageStatus::Belated
-
             } else {
                 log::warn!(
                     "The message ordering ({msg_ordering}) is repeating according to the global one ({curr_order}). Aborting..."
                 );
                 MessageStatus::Invalid
             }
-        } else if !(self.state.consecutive_ordering(msg_ordering).await) {
+        } else if !(self.state.consecutive_ordering(msg_ordering)) {
             log::info!(
                 "The message ordering ({msg_ordering}) does not correspond with the global one ({curr_order}). Waiting for its turn..."
             );
             MessageStatus::Disordered
-
         } else {
             MessageStatus::Correct
         }
     }
 
     pub async fn correct_ordering(&self, msg_ordering: u32) {
-        let mut timeout: u8 = 0;
-        let order_diff = msg_ordering - self.state.get_ordering().await;
-        let modifier = ( // bigger difference = more time for the order correction
-            *ORDER_CORRECTION_TIME_LIMIT as f32 *
-                (*ORDER_DIFF_MULTIPLIER * (order_diff - 2) as f32)
-        ) as u8;
+        let order_diff = msg_ordering - self.state.get_ordering();
+        let modifier = (
+            // bigger difference = more time for the order correction
+            *ORDER_CORRECTION_TIME_LIMIT_MS as f32 * (*ORDER_DIFF_MULTIPLIER * (order_diff - 2) as f32)
+        ) as u64;
 
-        let total_timeout = *ORDER_CORRECTION_TIME_LIMIT + modifier;
+        let max_correction_time = min(
+            (*REQ_TIMEOUT_MS) - 10000,
+            *ORDER_CORRECTION_TIME_LIMIT_MS + modifier
+        );
 
-        while !(self.state.consecutive_ordering(msg_ordering).await) {
-            timeout += 1;
-            time::sleep(Duration::from_secs(1)).await;
-
-            if timeout > total_timeout {
-                log::warn!("The awaiting message(s) have been lost. Continue processing the current queue");
-                self.state.modify_lost_message_count((order_diff - 1) as i8).await;
-                break;
+        let mut inter = interval(Duration::from_secs(1));
+        match timeout(
+            Duration::from_millis(max_correction_time),
+            async {
+                while !(self.state.consecutive_ordering(msg_ordering)) {
+                    inter.tick().await;
+                }
             }
-        };
+        ).await {
+            Err(_) => {
+                log::warn!("The awaiting message(s) have been lost. Continue processing the current queue");
+                self.state.modify_lost_message_count((order_diff - 1) as i8);
+            }
+            _ => {}
+        }
     }
 }
 
-
-#[tonic::async_trait]
+#[async_trait]
 impl Replicator for ReplicatedMessageLog {
 
-    async fn replicate(
-        &self,
-        request: Request<Replica>
-    ) -> Result<Response<Ack>, Status> {
+    async fn replicate(&self, request: ReplReq) -> ReplRes {
 
         let replica_msg: Replica = request.into_inner();
         log::info!("{:?} received", replica_msg);
 
         let status = self.validate(&replica_msg).await;
         if status == MessageStatus::Invalid {
-            return Ok(
-                Response::new(Ack { status: false })
-            )
+            return Ok(Response::new(Ack { success: false }));
         }
 
         self.state.register_id(replica_msg.id.clone()).await;
@@ -196,43 +248,66 @@ impl Replicator for ReplicatedMessageLog {
             self.correct_ordering(replica_msg.order).await;
         }
 
-        time::sleep(
-            Duration::from_secs(*REPL_DELAY as u64)
-        ).await;
+        sleep(*REPL_DELAY_MS).await;
 
-        let message = Message { content: replica_msg.content };
+        let message = Message {
+            content: replica_msg.content,
+        };
         self.log.add(message.clone()).await;
         log::info!("{:?} replicated", message);
 
         if !(status == MessageStatus::Belated) {
-            self.state.register_ordering(replica_msg.order).await;
+            self.state.register_ordering(replica_msg.order);
+        }
+
+        match SABOTAGE_MODE.load(Ordering::Acquire) {
+            false => Ok(Response::new(Ack { success: true })),
+            true => Err(Status::internal("Internal server error"))
+        }
+    }
+}
+
+#[async_trait]
+impl SyncRequest for ReplicatedMessageLog {
+    async fn sync(&self, _: SyncReq) -> SyncRes {
+        let ordering = self.state.get_ordering();
+
+        if !self.state.sync_mode.enabled() {
+            let mode = self.state.sync_mode.clone();
+            mode.toggle(true);
+            tokio::spawn(async move {
+                try_join(ordering).await;
+                mode.toggle(false)
+            });
         }
 
         Ok(
-            Response::new(Ack { status: true })
+            Response::new(EmptyAck {})
         )
     }
 }
 
-pub async fn start(log: MessageLog) {
 
-    let addr = format!(
-        "[::0]:{}",
-        env::var("RPC_PORT")
-            .unwrap_or(String::from(replog::PRC_DEF_PORT)));
+pub async fn start(repl_log: ReplicatedMessageLog) {
+    let addr = SocketAddr::from(([0, 0, 0, 0], *RPC_DEF_PORT));
 
-    let addr = addr.parse::<SocketAddr>();
-    if let Err(e) = addr {
-        panic!("Invalid socket address - {e}");
-    }
+    let dur = Duration::from_millis(*RPC_SERVER_RECONNECT_DELAY_MS);
+    loop {
+        log::info!("Starting replication server");
+        let health_service = HealthService {};
+        match Server::builder()
+            .timeout(Duration::from_millis(*REQ_TIMEOUT_MS))
+            .add_service(HealthServer::new(health_service))
+            .add_service(ReplicatorServer::new(ReplicatedMessageLog::from(&repl_log)))
+            .add_service(SyncRequestServer::new(ReplicatedMessageLog::from(&repl_log)))
+            .serve(addr)
+            .await {
+            Ok(_) => break,
+            Err(e) => {
+                log::error!("ReplicatorServer failed - {e:?}. Reconnect after {} ms...", dur.as_millis());
 
-    let repl_log = ReplicatedMessageLog { state: ReplicationState::new(), log };
-
-    log::info!("Starting RPC server");
-    if let Err(e) =  Server::builder()
-        .add_service(ReplicatorServer::new(repl_log))
-        .serve(addr.unwrap())
-        .await {
-            panic!("RPC server failed - {e}");  // todo: implement server auto-recover
+                sleep(dur).await;
+            }
+        }
     }
 }

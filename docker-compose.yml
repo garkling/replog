@@ -6,45 +6,21 @@ services:
     restart: on-failure
     container_name: master
     hostname: master
-    image: garkling/replicated-log-master:2.1.0
+    image: garkling/replicated-log-master:3.0.0
 
-    environment:
-      - SECONDARY_HOSTS=secondary1,secondary2
-      - RPC_PORT=50051
+#    environment:
 
     ports:
-      - "127.0.0.1:8080:10000"
+      - "127.0.0.1:8080:${SERVER_PORT}"
 
-  secondary01:
+  secondary:
     restart: on-failure
-    container_name: secondary1
-    hostname: secondary1
-    image: garkling/replicated-log-secondary:2.1.0
+    container_name: secondary${NTH}
+    hostname: ${SECONDARY_HOSTNAME:-secondary${NTH}}
+    image: garkling/replicated-log-secondary:3.0.0
 
-    environment:
-      REPLICATION_DELAY: 5
-      ORDER_DIFF_MULTIPLIER: 0.2
-      ORDER_CORRECTION_TIME_LIMIT_S: 60
+#    environment:
 
-    depends_on:
-      - master
 
     ports:
-      - "127.0.0.1:8081:10000"
-
-  secondary02:
-    restart: on-failure
-    container_name: secondary2
-    hostname: secondary2
-    image: garkling/replicated-log-secondary:2.1.0
-
-    environment:
-      REPLICATION_DELAY: 10
-      ORDER_DIFF_MULTIPLIER: 0.2
-      ORDER_CORRECTION_TIME_LIMIT_S: 60
-
-    depends_on:
-      - master
-
-    ports:
-      - "127.0.0.1:8082:10000"
+      - "127.0.0.1:808${NTH}:${SERVER_PORT}"

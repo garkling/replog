@@ -8,8 +8,8 @@ RUN apt update && apt install -y protobuf-compiler libprotobuf-dev
 RUN --mount=type=bind,source=src/${APP_NAME},target=src/${APP_NAME} \
     --mount=type=bind,source=src/common,target=src/common \
     --mount=type=bind,source=src/lib.rs,target=src/lib.rs \
+    --mount=type=bind,source=proto,target=proto \
     --mount=type=bind,source=build.rs,target=build.rs \
-    --mount=type=bind,source=replica.proto,target=replica.proto \
     --mount=type=bind,source=Cargo.toml,target=Cargo.toml \
     --mount=type=bind,source=Cargo.lock,target=Cargo.lock \
     --mount=type=cache,target=/app/target/ \
