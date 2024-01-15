@@ -1,0 +1,15 @@
+syntax = "proto3";
+package joinreq;
+
+service JoinRequest {
+  rpc join(NodeState) returns (Ack);
+}
+
+message NodeState {
+  string host = 1;
+  uint32 ordering = 2;
+}
+
+message Ack {
+  bool success = 1;
+}
