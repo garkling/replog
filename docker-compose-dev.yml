@@ -14,16 +14,15 @@ services:
     image: replicated-log-master
 
     environment:
-      - SECONDARY_HOSTS=secondary1,secondary2
-      - RPC_PORT=50051
+      RPC_PORT: 50051
 
     ports:
-      - "127.0.0.1:8080:10000"
+      - "127.0.0.1:8080:${SERVER_PORT}"
 
-  secondary01:
+  secondary:
     restart: on-failure
-    container_name: secondary1
-    hostname: secondary1
+    container_name: secondary${NTH}
+    hostname: ${SECONDARY_HOSTNAME:-secondary${NTH}}
     build:
       dockerfile: Dockerfile
       context: .
@@ -32,34 +31,9 @@ services:
     image: replicated-log-secondary
 
     environment:
-      REPLICATION_DELAY: 5
+      REPLICATION_DELAY_MS: 10000
       ORDER_DIFF_MULTIPLIER: 0.2
-      ORDER_CORRECTION_TIME_LIMIT_S: 60
-
-    depends_on:
-      - master
+      ORDER_CORRECTION_TIME_LIMIT_MS: 60000
 
     ports:
-      - "127.0.0.1:8081:10000"
-
-  secondary02:
-    restart: on-failure
-    container_name: secondary2
-    hostname: secondary2
-    build:
-      dockerfile: Dockerfile
-      context: .
-      args:
-        APP_NAME: secondary
-    image: replicated-log-secondary
-
-    environment:
-      REPLICATION_DELAY: 10
-      ORDER_DIFF_MULTIPLIER: 0.2
-      ORDER_CORRECTION_TIME_LIMIT_S: 60
-
-    depends_on:
-      - master
-
-    ports:
-      - "127.0.0.1:8082:10000"
+      - "127.0.0.1:808${NTH}:${SERVER_PORT}"
